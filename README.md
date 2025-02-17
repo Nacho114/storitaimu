@@ -6,7 +6,7 @@ This tool automatically transcribes audio files and provides a detailed content 
 
 - Automatic audio file detection and processing
 - Speech-to-text transcription using Whisper
-- Content analysis using GPT-4
+- Content analysis using GPT-4o-mini
 - Filler word detection and counting
 - Organized output with unique IDs for each analysis
 
