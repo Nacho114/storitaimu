@@ -3,49 +3,71 @@ load_dotenv()
 import asyncio
 from llama_index.readers.whisper import WhisperReader
 from llama_index.llms.openai import OpenAI
-from typing import Literal, List, Dict
+from typing import Literal, List
 from pydantic import BaseModel, Field
 import os
 import shutil
 import json
-from datetime import datetime
 import uuid
 
-# Data Models
 class FillerWordAnalysis(BaseModel):
     """
-    Structure for LLM to identify and analyze filler words in the transcript.
-    The LLM will populate this with its findings.
+    Comprehensive analysis of speaking patterns, filler words, and vocal delivery.
+    The LLM will analyze both technical patterns and their impact on the speech.
     """
     found_filler_words: List[str] = Field(
         ...,
-        description="List of all filler words and phrases identified in the transcript (e.g., 'um', 'uh', 'like', 'you know')"
+        description="List of all filler words and phrases identified in the transcript, including hesitations (um, uh), hedging phrases (sort of, kind of), repetitive transitions (and then, so), and unnecessary qualifiers (I think, basically)"
     )
-    speaking_patterns: List[str] = Field(
+    pacing_observations: List[str] = Field(
         ...,
-        description="Observations about notable speech patterns and filler word usage"
+        description="Observations about speaking rhythm, including rushed sections, pauses, breathing patterns, and natural flow versus mechanical delivery"
+    )
+    vocal_delivery: List[str] = Field(
+        ...,
+        description="Analysis of voice modulation, including changes in pitch, volume, emphasis patterns, and emotional expression"
+    )
+    speaking_recommendations: List[str] = Field(
+        ...,
+        description="Specific suggestions for improving vocal delivery, including strategic use of silence, pacing adjustments, and techniques for reducing filler words"
     )
 
 class ContentReview(BaseModel):
-    """LLM's analysis of the content, story, and delivery."""
+    """
+    Detailed analysis of speech content, structure, and storytelling effectiveness.
+    Focuses on both the technical and artistic elements of the presentation.
+    """
     summary: str = Field(
         ..., 
-        description="A concise summary of the main points and content"
+        description="A concise summary of the main message, key points, and overall narrative arc"
+    )
+    story_structure: List[str] = Field(
+        ...,
+        description="Analysis of speech components including opening hook, transitions, main points organization, and conclusion effectiveness"
+    )
+    storytelling_elements: List[str] = Field(
+        ...,
+        description="Evaluation of narrative techniques including scene-setting, character development, emotional resonance, and memorable moments"
+    )
+    audience_engagement: List[str] = Field(
+        ...,
+        description="Analysis of engagement techniques like rhetorical questions, inclusive language, relatable examples, and audience connection moments"
     )
     story_strength: Literal["weak", "average", "good", "strong", "excellent"] = Field(
         ..., 
-        description="Assessment of how effectively the content is presented"
+        description="Overall assessment of how effectively the content is presented and resonates with the audience"
     )
     story_length: Literal["too short", "just right", "too long"] = Field(
-        ..., 
-        description="Evaluation of content length appropriateness"
-    )
-    suggestions: List[str] = Field(
         ...,
-        description="Specific recommendations for improvement"
+        description="Evaluation of content length and pacing appropriateness"
+    )
+    improvement_suggestions: List[str] = Field(
+        ...,
+        description="Specific recommendations for improving content structure, storytelling impact, and audience engagement"
     )
 
 # Helper Functions
+
 def find_audio_file() -> str | None:
     """Find the first audio file in the current directory."""
     audio_extensions = ('.mp3', '.m4a', '.wav', '.aac', '.mp4')
