@@ -3,82 +3,60 @@ load_dotenv()
 import asyncio
 from llama_index.readers.whisper import WhisperReader
 from llama_index.llms.openai import OpenAI
-from typing import Literal, List, Dict, Optional
+from typing import Literal, List, Dict
 from pydantic import BaseModel, Field
 import os
 import shutil
 import json
 from datetime import datetime
 import uuid
-import re
 
-class TranscriptMetrics(BaseModel):
-    """Basic metrics about the transcript content."""
-    word_count: int = Field(..., description="Total number of words in the transcript")
-    filler_words: Dict[str, int] = Field(default_factory=dict, description="Dictionary of filler words and their counts")
-    total_filler_words: int = Field(default=0, description="Total count of all filler words used")
+# Data Models
+class FillerWordAnalysis(BaseModel):
+    """
+    Structure for LLM to identify and analyze filler words in the transcript.
+    The LLM will populate this with its findings.
+    """
+    found_filler_words: List[str] = Field(
+        ...,
+        description="List of all filler words and phrases identified in the transcript (e.g., 'um', 'uh', 'like', 'you know')"
+    )
+    speaking_patterns: List[str] = Field(
+        ...,
+        description="Observations about notable speech patterns and filler word usage"
+    )
 
 class ContentReview(BaseModel):
-    """LLM's analysis of the content and story."""
-    summary: str = Field(..., description="A concise summary of the main points and content")
+    """LLM's analysis of the content, story, and delivery."""
+    summary: str = Field(
+        ..., 
+        description="A concise summary of the main points and content"
+    )
     story_strength: Literal["weak", "average", "good", "strong", "excellent"] = Field(
-        ..., description="Assessment of how effectively the content is presented")
+        ..., 
+        description="Assessment of how effectively the content is presented"
+    )
     story_length: Literal["too short", "just right", "too long"] = Field(
-        ..., description="Evaluation of content length appropriateness")
-    suggestions: List[str] = Field(..., description="Specific recommendations for improvement")
+        ..., 
+        description="Evaluation of content length appropriateness"
+    )
+    suggestions: List[str] = Field(
+        ...,
+        description="Specific recommendations for improvement"
+    )
 
-class AudioAnalysis(BaseModel):
-    """Complete analysis results."""
-    analysis_id: str = Field(..., description="Unique identifier for this analysis")
-    filename: str = Field(..., description="Name of the analyzed audio file")
-    timestamp: str = Field(..., description="When the analysis was performed")
-    metrics: TranscriptMetrics
-    review: ContentReview
-    
-    def save_json(self, filepath: str):
-        """Save the analysis to a JSON file."""
-        with open(filepath, 'w') as f:
-            json.dump(self.model_dump(), f, indent=4)
-
-def find_audio_file() -> Optional[str]:
-    """
-    Look for audio files in the current directory.
-    Returns the first audio file found or None if no audio files are present.
-    """
-    # Common audio extensions we support
+# Helper Functions
+def find_audio_file() -> str | None:
+    """Find the first audio file in the current directory."""
     audio_extensions = ('.mp3', '.m4a', '.wav', '.aac', '.mp4')
-    
-    # List all files in current directory
-    files = os.listdir('.')
-    
-    # Find the first audio file
-    for file in files:
+    for file in os.listdir('.'):
         if file.lower().endswith(audio_extensions):
             return file
-            
     return None
 
-def analyze_filler_words(transcript: str) -> Dict[str, int]:
-    """Find and count filler words in the transcript."""
-    common_fillers = {
-        'um': r'\bum\b',
-        'uh': r'\buh\b',
-        'like': r'\blike\b',
-        'you know': r'\byou know\b',
-        'sort of': r'\bsort of\b',
-        'kind of': r'\bkind of\b'
-    }
-    
-    filler_counts = {}
-    for filler, pattern in common_fillers.items():
-        count = len(re.findall(pattern, transcript.lower()))
-        if count > 0:
-            filler_counts[filler] = count
-            
-    return filler_counts
-
+# Main Analysis Function
 async def analyze_audio():
-    """Process audio file and generate analysis."""
+    """Process audio file and generate comprehensive analysis."""
     try:
         # Look for an audio file
         print("\n🔍 Looking for audio files...")
@@ -91,103 +69,64 @@ async def analyze_audio():
         
         print(f"✅ Found audio file: {audio_file}")
         
-        # Generate analysis ID and create folder name
-        analysis_id = str(uuid.uuid4())[:8]  # Using first 8 characters for shorter name
+        # Set up analysis folder with unique ID
+        analysis_id = str(uuid.uuid4())[:8]
         folder_name = f"{analysis_id}-{os.path.splitext(audio_file)[0]}"
         folder_path = os.path.join('data', folder_name)
-        
-        print(f"\n📂 Creating analysis folder: {folder_path}")
         os.makedirs(folder_path, exist_ok=True)
         
-        # Move the audio file
+        # Move the audio file to analysis folder
         print("\n🔄 Moving audio file...")
         new_audio_path = os.path.join(folder_path, audio_file)
         shutil.move(audio_file, new_audio_path)
         
-        # Transcribe the audio
+        # Transcribe the audio using Whisper
         print("\n🎤 Transcribing audio...")
         reader = WhisperReader(model="whisper-1")
         documents = await reader.aload_data(new_audio_path)
         transcript = documents[0].text
         
-        # Analyze the transcript
-        print("\n📊 Analyzing transcript...")
-        words = transcript.split()
-        word_count = len(words)
+        # Initialize OpenAI LLM for analysis
+        llm = OpenAI(model="gpt-4o-mini")
         
-        # Find filler words
-        filler_counts = analyze_filler_words(transcript)
-        total_fillers = sum(filler_counts.values())
+        # Analyze filler words
+        print("\n🔍 Analyzing filler words...")
+        sllm = llm.as_structured_llm(FillerWordAnalysis)
+        filler_completion = sllm.complete(transcript)
         
-        # Create metrics object
-        metrics = TranscriptMetrics(
-            word_count=word_count,
-            filler_words=filler_counts,
-            total_filler_words=total_fillers
-        )
-        
-        # Get the content review from LLM
-        print("\n🤖 Getting content review...")
-        llm = OpenAI(model="gpt-4")
-        prompt = f"""
-        Review this transcript, taking note that it contains {total_fillers} filler words.
-        
-        Transcript: {transcript}
-        
-        Provide a review with:
-        1. A brief summary of the content
-        2. The story strength (choose one: weak, average, good, strong, excellent)
-        3. The story length (choose one: too short, just right, too long)
-        4. 1-2 suggestions for improvement
-        
-        Format your response as a JSON object with these exact keys: summary, story_strength, story_length, suggestions
-        """
-        
-        response = llm.complete(prompt)
-        review_data = json.loads(response.text)
-        
-        # Create the review object
-        review = ContentReview(
-            summary=review_data['summary'],
-            story_strength=review_data['story_strength'],
-            story_length=review_data['story_length'],
-            suggestions=review_data['suggestions']
-        )
-        
-        # Create the complete analysis
-        analysis = AudioAnalysis(
-            analysis_id=analysis_id,
-            filename=audio_file,
-            timestamp=datetime.now().isoformat(),
-            metrics=metrics,
-            review=review
-        )
-        
-        # Save the results
+        # Generate content review
+        print("\n🤖 Generating content review...")
+        sllm = llm.as_structured_llm(ContentReview)
+        review_completion = sllm.complete(transcript)
+       
+        # Save results to files
         print("\n💾 Saving results...")
-        
-        # Save the transcript
-        with open(os.path.join(folder_path, 'transcript.txt'), 'w') as f:
-            f.write(transcript)
+
+        # Save both analyses to JSON files
+        filler_analysis_path = os.path.join(folder_path, 'filler_analysis.json')
+        with open(filler_analysis_path, 'w') as f:
+            # Parse the JSON string from the text field and save directly
+            filler_data = json.loads(filler_completion.text)
+            json.dump(filler_data, f, indent=4)
             
-        # Save the analysis
-        analysis.save_json(os.path.join(folder_path, 'analysis.json'))
-        
-        # Print a summary
-        print("\n✨ Analysis complete!")
-        print(f"📁 Results saved in: {folder_path}")
-        print(f"\n📊 Quick Stats:")
-        print(f"- Analysis ID: {analysis_id}")
-        print(f"- Total words: {metrics.word_count}")
-        print(f"- Filler words: {metrics.total_filler_words}")
-        if metrics.filler_words:
-            print("- Common fillers used:", ", ".join(f"{word} ({count}x)" 
-                  for word, count in metrics.filler_words.items()))
-        
+        content_review_path = os.path.join(folder_path, 'content_review.json')
+        with open(content_review_path, 'w') as f:
+            # Parse the JSON string from the text field and save directly
+            content_data = json.loads(review_completion.text)
+            json.dump(content_data, f, indent=4)
+            
+        # Save the raw transcript
+        transcript_path = os.path.join(folder_path, 'transcript.txt')
+        with open(transcript_path, 'w') as f:
+            f.write(transcript)
+
     except Exception as e:
         print(f"\n❌ Error: {str(e)}")
         raise
 
+# Script Entry Point
 if __name__ == "__main__":
+    # Ensure data directory exists
     os.makedirs('data', exist_ok=True)
+    # Run the analysis
     asyncio.run(analyze_audio())
